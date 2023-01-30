@@ -1,4 +1,5 @@
-#include "types.h"
+#include <Arduino.h>
+#include <types.h>
 #include <MIDI.h>
 
 #define NUM_BANKS         8   // number of group of keys (for Fatar 61 they're arranged in 8 banks)
@@ -24,6 +25,12 @@ int midiCh = 6;
                                        ARM_DWT_CYCCNT = 0; } while(0)
 volatile int cycles;
 */
+
+void setup_scan();
+void scan();
+void trigger(key_fatar_t *key, event_t event);
+void increment();
+int velocity(int t);
 
 void setup() {
 
@@ -59,13 +66,11 @@ void setup() {
    MIDI.begin();
 }
 
-
 // MAIN LOOP
 void loop() {
    scan();
    increment(); 
 }
-
 
 // Before entering the playing mode, there's an initial loop to select the trigger mode of keys and the midi channel (optional)
 // Trigger mode: NORMAL on key C2 (36), HIGH-TRIG (Hammond mode) on key C7 (96)
@@ -145,7 +150,6 @@ void setup_scan()
   
 }
 
-
 // Scan all the keys divided in banks
 void scan() {
    
@@ -193,7 +197,6 @@ void scan() {
       }
    }
 }
-
 
 // Send a MIDI message of note ON or note OFF if the key reach top or bottom, change the states of the keys
 void trigger(key_fatar_t *key, event_t event) {
@@ -258,7 +261,6 @@ void trigger(key_fatar_t *key, event_t event) {
       break;
   }
 }
-
 
 // Increment the t values of each touched or released key
 void increment() {
