@@ -58,8 +58,7 @@ void setup() {
       keys[key].played = false;
    }
    
-   while(highTrig==0)
-   {
+   while(highTrig==0) {
       setup_scan(); 
    }
    
@@ -75,8 +74,7 @@ void loop() {
 // Before entering the playing mode, there's an initial loop to select the trigger mode of keys and the midi channel (optional)
 // Trigger mode: NORMAL on key C2 (36), HIGH-TRIG (Hammond mode) on key C7 (96)
 // MIDI Channel: C4=1, C#4=2, D4=3 ... D#5=16
-void setup_scan()
-{
+void setup_scan() {
    for(int bank=0; bank<NUM_BANKS; bank++) {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
       // Scan left keyboard
@@ -201,8 +199,7 @@ void scan() {
 // Send a MIDI message of note ON or note OFF if the key reach top or bottom, change the states of the keys
 void trigger(key_fatar_t *key, event_t event) {
 
-   switch (event)
-   {
+   switch (event) {
       case KEY_TOUCHED:
          if(highTrig==1) {
           /*
@@ -276,7 +273,6 @@ void increment() {
 // Compute the velocity from the time through a piecewise linear function
 // ####################### NEED SOME TUNING #############################
 int velocity(int t) {
-  
    if(t<11)
       return 127;
    if(t<28)
