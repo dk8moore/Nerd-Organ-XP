@@ -9,10 +9,11 @@ bank_t banks[NUM_BANKS];
 bank_t prev_banks[NUM_BANKS];
 key_fatar_t keys[NUM_KEYS];         // number of keys of the keybed (Fatar 61)
 
-byte ctrlPins[] = {15, 22, 23, 9, 10};                    // first 5 bits of the CPORT of Teensy, used to address scan (mplx)
-byte inPins[] = {2, 14, 7, 8, 6, 20, 21, 5};      // pins of the DPORT of Teensy, ordered by bit, used to read keys
+byte ctrlPins[] = {7, 8, 10, 11, 12};                    // bits 17, 16, 0, 2, 1 of GPIO2 (GPIO7) respectively, used to address scan (mplx)
+byte inPins[] = {14, 15, 16, 17, 18, 19, 20, 21};      // bits 18, 19, 23, 22, 17, 16, 26, 27 of GPIO1 (GPIO6) respectively, used to read input from grid matrix
+int inBits[] = {18, 19, 23, 22, 17, 16, 26, 27};
 
-byte left, right;     // read word from keybaord: pins are connected LEFT: BRBRBRBR MKMKMKMK, RIGHT: BRBRBRBR MKMKMKMK
+byte left, right;     // read word from keyboard: pins are connected LEFT: BRBRBRBR MKMKMKMK, RIGHT: BRBRBRBR MKMKMKMK
 
 byte highTrig = 0;    // 0 if in setup mode, 1 if in High Trigger mode, 2 if in Normal Mode
 
@@ -36,16 +37,12 @@ void setup() {
 
    // Start serial comm for debug purposes
    Serial.begin(9600);
-   
-   // Setup output pins
-   for (int i=0; i<5; i++) {
-      pinMode(ctrlPins[i], OUTPUT);
-   }
 
-   // Setup input pins (pullup resistors)
-   for (int i=0; i<8; i++) {
-      pinMode(inPins[i], INPUT_PULLDOWN);
-   }
+   // Setup output pins
+   GPIO7_GDIR |= (0x30007);
+
+   // Setup input pins (pulldown resistors - default)
+   GPIO6_GDIR &= ~(0xCCF0000);
    
    // Initialize banks array at 0
    memset(banks, 0x00, sizeof(banks));
@@ -58,9 +55,9 @@ void setup() {
       keys[key].played = false;
    }
    
-   while(highTrig==0) {
-      setup_scan(); 
-   }
+   // while(highTrig==0) {
+   //    setup_scan(); 
+   // }
    
    MIDI.begin();
 }
@@ -68,85 +65,86 @@ void setup() {
 // MAIN LOOP
 void loop() {
    scan();
-   increment(); 
+   // increment(); 
 }
 
 // Before entering the playing mode, there's an initial loop to select the trigger mode of keys and the midi channel (optional)
 // Trigger mode: NORMAL on key C2 (36), HIGH-TRIG (Hammond mode) on key C7 (96)
 // MIDI Channel: C4=1, C#4=2, D4=3 ... D#5=16
-void setup_scan() {
-   for(int bank=0; bank<NUM_BANKS; bank++) {
-      prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
-      // Scan left keyboard
-      GPIOC_PDOR = (bank & 0xF) | 8;
-      delayMicroseconds(10); // Debounce
-      left = GPIOD_PDIR & 0xF;  // Read only the break signals
+// void setup_scan() {
+//    for(int bank=0; bank<NUM_BANKS; bank++) {
+//       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
+//       // Scan left keyboard
+
+//       GPIOC_PDOR = (bank & 0xF) | 8;
+//       delayMicroseconds(10); // Debounce
+//       left = GPIOD_PDIR & 0xF;  // Read only the break signals
      
-      // Scan right keyboard
-      GPIOC_PDOR = (bank & 0x7) | 16;
-      delayMicroseconds(10); // Debounce
-      right = GPIOD_PDIR & 0xF;  // Read only the break signals
-      banks[bank].breaks = left | (right<<4);
-   }
+//       // Scan right keyboard
+//       GPIOC_PDOR = (bank & 0x7) | 16;
+//       delayMicroseconds(10); // Debounce
+//       right = GPIOD_PDIR & 0xF;  // Read only the break signals
+//       banks[bank].breaks = left | (right<<4);
+//    }
   
-   // Check C2 for NORMAL MODE
-   if(banks[0].breaks & 0x1) {
-      Serial.println("Normal mode selected..");
-      Serial.print("MIDI channel: ");
-      Serial.println(midiCh);
-      highTrig = 2;
-      return;
-   }
-   // Check C7 for HIGH-TRIG MODE
-   if(banks[4].breaks & 0x80) {
-      Serial.println("High trigger mode selected..");
-      Serial.print("MIDI channel: ");
-      Serial.println(midiCh);
-      highTrig = 1;
-      return;
-   }
+//    // Check C2 for NORMAL MODE
+//    if(banks[0].breaks & 0x1) {
+//       Serial.println("Normal mode selected..");
+//       Serial.print("MIDI channel: ");
+//       Serial.println(midiCh);
+//       highTrig = 2;
+//       return;
+//    }
+//    // Check C7 for HIGH-TRIG MODE
+//    if(banks[4].breaks & 0x80) {
+//       Serial.println("High trigger mode selected..");
+//       Serial.print("MIDI channel: ");
+//       Serial.println(midiCh);
+//       highTrig = 1;
+//       return;
+//    }
    
-   byte diff;
+//    byte diff;
    
-   for(int bank=0; bank<NUM_BANKS; bank++) {
-      diff = (banks[bank].breaks ^ prev_banks[bank].breaks) & banks[bank].breaks;
-      switch(diff) {
+//    for(int bank=0; bank<NUM_BANKS; bank++) {
+//       diff = (banks[bank].breaks ^ prev_banks[bank].breaks) & banks[bank].breaks;
+//       switch(diff) {
         
-         case 0x8:
-            midiCh = bank+1;
-            /*
-            Serial.print("New MIDI channel: ");
-            Serial.println(midiCh);
-            */
-         break;
+//          case 0x8:
+//             midiCh = bank+1;
+//             /*
+//             Serial.print("New MIDI channel: ");
+//             Serial.println(midiCh);
+//             */
+//          break;
 
-         case 0x10:
-            midiCh = bank+9;
-            /*
-            Serial.print("New MIDI channel: ");
-            Serial.println(midiCh);
-            */
-         break;
+//          case 0x10:
+//             midiCh = bank+9;
+//             /*
+//             Serial.print("New MIDI channel: ");
+//             Serial.println(midiCh);
+//             */
+//          break;
 
-         case 0x1:
-         case 0x2:
-         case 0x4:
-         case 0x20:
-         case 0x40:
-         case 0x80:
-            /*
-            Serial.print("Unassigned key. MIDI channel is: ");
-            Serial.println(midiCh);
-            */
-         break;
+//          case 0x1:
+//          case 0x2:
+//          case 0x4:
+//          case 0x20:
+//          case 0x40:
+//          case 0x80:
+//             /*
+//             Serial.print("Unassigned key. MIDI channel is: ");
+//             Serial.println(midiCh);
+//             */
+//          break;
          
-         default:
-         break;
-      }
+//          default:
+//          break;
+//       }
       
-   }
+//    }
   
-}
+// }
 
 // Scan all the keys divided in banks
 void scan() {
@@ -155,45 +153,63 @@ void scan() {
    for(int bank=0; bank<NUM_BANKS; bank++) {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
       // Scan left keyboard
-      GPIOC_PDOR = (bank & 0xF) | 8;
+      Serial.println('Accendo i LED left');
+      GPIO7_DR_SET = (1 << 16) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
-      left = GPIOD_PDIR;
+      left = (GPIO6_DR >> 16);
+      delay(1000);
+      GPIO7_DR_CLEAR = (1 << 16);
+
      
       // Scan right keyboard
-      GPIOC_PDOR = (bank & 0x7) | 16;
+      Serial.println('Accendo i LED right');
+      GPIO7_DR_SET = (1 << 17) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
-      right = GPIOD_PDIR;
-      banks[bank].breaks = (left & 0x0F) | (right & 0x0F)<<4;
-      banks[bank].makes = (left & 0xF0)>>4 | (right & 0xF0);
-   }
-  
-   // Process
-   for(int bank=0; bank<NUM_BANKS; bank++) {
-      byte diff;
-      
-      // Check top switches and fire events
-      diff = banks[bank].breaks ^ prev_banks[bank].breaks;
-      if(diff) {
-         //Serial.println(bank);
-         for(int key=0; key<8; key++) {
-            if(bitRead(diff, key)) { 
-               event_t event = bitRead(banks[bank].breaks, key) ? KEY_TOUCHED : KEY_TOP;
-               trigger(&keys[bank+key*8], event);
-            }
-         }
-      }
+      right = (GPIO6_DR >> 16);
+      delay(1000);
 
-      // Check bottom switches and fire events
-      diff = banks[bank].makes ^ prev_banks[bank].makes;
-      if(diff) {
-         for(int key=0; key<8; key++) {
-            if(bitRead(diff, key)) { 
-               event_t event = bitRead(banks[bank].makes, key) ? KEY_PRESSED : KEY_RELEASED;           
-               trigger(&keys[bank+key*8], event);
-            }
-         }
-      }
+      // banks[bank].breaks = (left & 0x0F) | (right & 0x0F)<<4;
+      // banks[bank].makes = (left & 0xF0)>>4 | (right & 0xF0);
+
+      Serial.println('Spengo tutto');
+      GPIO7_DR_CLEAR = (0x30007);
+      delay(1000);
    }
+   // Process
+   // for(int bank=0; bank<NUM_BANKS; bank++) {
+   //    byte diff;
+      
+   //    // Check top switches and fire events
+   //    diff = banks[bank].breaks ^ prev_banks[bank].breaks;
+   //    if(diff) {
+   //       //Serial.println(bank);
+   //       for(int key=0; key<8; key++) {
+   //          if(bitRead(diff, key)) { 
+   //             event_t event = bitRead(banks[bank].breaks, key) ? KEY_TOUCHED : KEY_TOP;
+   //             trigger(&keys[bank+key*8], event);
+   //          }
+   //       }
+   //    }
+
+   //    // Check bottom switches and fire events
+   //    diff = banks[bank].makes ^ prev_banks[bank].makes;
+   //    if(diff) {
+   //       for(int key=0; key<8; key++) {
+   //          if(bitRead(diff, key)) { 
+   //             event_t event = bitRead(banks[bank].makes, key) ? KEY_PRESSED : KEY_RELEASED;           
+   //             trigger(&keys[bank+key*8], event);
+   //          }
+   //       }
+   //    }
+   // }
+}
+
+byte compactDrRead(word dr, int *arrangement[]) {
+   byte out = 0x00;
+   for(int i=0; i<sizeof(arrangement); i++) {
+      out |= (dr & (1 << (int(arrangement[i] - 16)))) >> int((arrangement[i] - 16 + i));
+   }
+   return out;
 }
 
 // Send a MIDI message of note ON or note OFF if the key reach top or bottom, change the states of the keys
