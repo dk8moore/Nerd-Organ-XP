@@ -29,6 +29,7 @@ volatile int cycles;
 
 void setup_scan();
 void scan();
+byte compact_dr(word dr, int arrangement[], int size);
 void trigger(key_fatar_t *key, event_t event);
 void increment();
 int velocity(int t);
@@ -55,9 +56,9 @@ void setup() {
       keys[key].played = false;
    }
    
-   // while(highTrig==0) {
-   //    setup_scan(); 
-   // }
+   while(highTrig==0) {
+      setup_scan(); 
+   }
    
    MIDI.begin();
 }
@@ -65,86 +66,88 @@ void setup() {
 // MAIN LOOP
 void loop() {
    scan();
-   // increment(); 
+   increment(); 
 }
 
 // Before entering the playing mode, there's an initial loop to select the trigger mode of keys and the midi channel (optional)
 // Trigger mode: NORMAL on key C2 (36), HIGH-TRIG (Hammond mode) on key C7 (96)
 // MIDI Channel: C4=1, C#4=2, D4=3 ... D#5=16
-// void setup_scan() {
-//    for(int bank=0; bank<NUM_BANKS; bank++) {
-//       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
-//       // Scan left keyboard
-
-//       GPIOC_PDOR = (bank & 0xF) | 8;
-//       delayMicroseconds(10); // Debounce
-//       left = GPIOD_PDIR & 0xF;  // Read only the break signals
-     
-//       // Scan right keyboard
-//       GPIOC_PDOR = (bank & 0x7) | 16;
-//       delayMicroseconds(10); // Debounce
-//       right = GPIOD_PDIR & 0xF;  // Read only the break signals
-//       banks[bank].breaks = left | (right<<4);
-//    }
-  
-//    // Check C2 for NORMAL MODE
-//    if(banks[0].breaks & 0x1) {
-//       Serial.println("Normal mode selected..");
-//       Serial.print("MIDI channel: ");
-//       Serial.println(midiCh);
-//       highTrig = 2;
-//       return;
-//    }
-//    // Check C7 for HIGH-TRIG MODE
-//    if(banks[4].breaks & 0x80) {
-//       Serial.println("High trigger mode selected..");
-//       Serial.print("MIDI channel: ");
-//       Serial.println(midiCh);
-//       highTrig = 1;
-//       return;
-//    }
-   
-//    byte diff;
-   
-//    for(int bank=0; bank<NUM_BANKS; bank++) {
-//       diff = (banks[bank].breaks ^ prev_banks[bank].breaks) & banks[bank].breaks;
-//       switch(diff) {
-        
-//          case 0x8:
-//             midiCh = bank+1;
-//             /*
-//             Serial.print("New MIDI channel: ");
-//             Serial.println(midiCh);
-//             */
-//          break;
-
-//          case 0x10:
-//             midiCh = bank+9;
-//             /*
-//             Serial.print("New MIDI channel: ");
-//             Serial.println(midiCh);
-//             */
-//          break;
-
-//          case 0x1:
-//          case 0x2:
-//          case 0x4:
-//          case 0x20:
-//          case 0x40:
-//          case 0x80:
-//             /*
-//             Serial.print("Unassigned key. MIDI channel is: ");
-//             Serial.println(midiCh);
-//             */
-//          break;
-         
-//          default:
-//          break;
-//       }
+void setup_scan() {
+   for(int bank=0; bank<NUM_BANKS; bank++) {
+      prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
       
-//    }
+      // Scan left keyboard
+      GPIO7_DR_SET = (1 << 16) | (bank & 0x7);
+      delayMicroseconds(10); // Debounce
+      left = compact_dr((GPIO6_DR >> 16), inBits, 8);
+      GPIO7_DR_CLEAR = (1 << 16);
+     
+      // Scan right keyboard
+      GPIO7_DR_SET = (1 << 17) | (bank & 0x7);
+      delayMicroseconds(10); // Debounce
+      right = compact_dr((GPIO6_DR >> 16), inBits, 8);
+
+      banks[bank].breaks = (left & 0xF) | (right & 0xF) << 4; // Use only break signals
+   }
   
-// }
+   // Check C2 for NORMAL MODE
+   if(banks[0].breaks & 0x1) {
+      Serial.println("Normal mode selected..");
+      Serial.print("MIDI channel: ");
+      Serial.println(midiCh);
+      highTrig = 2;
+      return;
+   }
+   // Check C7 for HIGH-TRIG MODE
+   if(banks[4].breaks & 0x80) {
+      Serial.println("High trigger mode selected..");
+      Serial.print("MIDI channel: ");
+      Serial.println(midiCh);
+      highTrig = 1;
+      return;
+   }
+   
+   byte diff;
+   
+   for(int bank=0; bank<NUM_BANKS; bank++) {
+      diff = (banks[bank].breaks ^ prev_banks[bank].breaks) & banks[bank].breaks;
+      switch(diff) {
+        
+         case 0x8:
+            midiCh = bank+1;
+            /*
+            Serial.print("New MIDI channel: ");
+            Serial.println(midiCh);
+            */
+         break;
+
+         case 0x10:
+            midiCh = bank+9;
+            /*
+            Serial.print("New MIDI channel: ");
+            Serial.println(midiCh);
+            */
+         break;
+
+         case 0x1:
+         case 0x2:
+         case 0x4:
+         case 0x20:
+         case 0x40:
+         case 0x80:
+            /*
+            Serial.print("Unassigned key. MIDI channel is: ");
+            Serial.println(midiCh);
+            */
+         break;
+         
+         default:
+         break;
+      }
+      
+   }
+  
+}
 
 // Scan all the keys divided in banks
 void scan() {
@@ -152,62 +155,60 @@ void scan() {
    // Scan and store
    for(int bank=0; bank<NUM_BANKS; bank++) {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
+
       // Scan left keyboard
-      Serial.println('Accendo i LED left');
       GPIO7_DR_SET = (1 << 16) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
-      left = (GPIO6_DR >> 16);
-      delay(1000);
+      left = compact_dr((GPIO6_DR >> 16), inBits, 8);
       GPIO7_DR_CLEAR = (1 << 16);
-
      
       // Scan right keyboard
-      Serial.println('Accendo i LED right');
       GPIO7_DR_SET = (1 << 17) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
-      right = (GPIO6_DR >> 16);
-      delay(1000);
+      right = compact_dr((GPIO6_DR >> 16), inBits, 8);
 
-      // banks[bank].breaks = (left & 0x0F) | (right & 0x0F)<<4;
-      // banks[bank].makes = (left & 0xF0)>>4 | (right & 0xF0);
+      banks[bank].breaks = (left & 0x0F) | (right & 0x0F) << 4;
+      banks[bank].makes = (left & 0xF0) >> 4 | (right & 0xF0);
 
-      Serial.println('Spengo tutto');
       GPIO7_DR_CLEAR = (0x30007);
-      delay(1000);
+      delayMicroseconds(10); // Debounce
    }
    // Process
-   // for(int bank=0; bank<NUM_BANKS; bank++) {
-   //    byte diff;
+   for(int bank=0; bank<NUM_BANKS; bank++) {
+      byte diff;
       
-   //    // Check top switches and fire events
-   //    diff = banks[bank].breaks ^ prev_banks[bank].breaks;
-   //    if(diff) {
-   //       //Serial.println(bank);
-   //       for(int key=0; key<8; key++) {
-   //          if(bitRead(diff, key)) { 
-   //             event_t event = bitRead(banks[bank].breaks, key) ? KEY_TOUCHED : KEY_TOP;
-   //             trigger(&keys[bank+key*8], event);
-   //          }
-   //       }
-   //    }
+      // Check top switches and fire events
+      diff = banks[bank].breaks ^ prev_banks[bank].breaks;
+      if(diff) {
+         //Serial.println(bank);
+         for(int key=0; key<8; key++) {
+            if(bitRead(diff, key)) { 
+               event_t event = bitRead(banks[bank].breaks, key) ? KEY_TOUCHED : KEY_TOP;
+               trigger(&keys[bank+key*8], event);
+            }
+         }
+      }
 
-   //    // Check bottom switches and fire events
-   //    diff = banks[bank].makes ^ prev_banks[bank].makes;
-   //    if(diff) {
-   //       for(int key=0; key<8; key++) {
-   //          if(bitRead(diff, key)) { 
-   //             event_t event = bitRead(banks[bank].makes, key) ? KEY_PRESSED : KEY_RELEASED;           
-   //             trigger(&keys[bank+key*8], event);
-   //          }
-   //       }
-   //    }
-   // }
+      // Check bottom switches and fire events
+      diff = banks[bank].makes ^ prev_banks[bank].makes;
+      if(diff) {
+         for(int key=0; key<8; key++) {
+            if(bitRead(diff, key)) { 
+               event_t event = bitRead(banks[bank].makes, key) ? KEY_PRESSED : KEY_RELEASED;           
+               trigger(&keys[bank+key*8], event);
+            }
+         }
+      }
+   }
 }
 
-byte compactDrRead(word dr, int *arrangement[]) {
-   byte out = 0x00;
-   for(int i=0; i<sizeof(arrangement); i++) {
-      out |= (dr & (1 << (int(arrangement[i] - 16)))) >> int((arrangement[i] - 16 + i));
+byte compact_dr(word dr, int arrangement[], int size) {
+   byte out = 0b0;
+   for(int i=0; i<size; i++) {
+      word temp = (dr & (1 << (int(arrangement[i] - 16))));
+      if ((arrangement[i] - 16 - i > 0)) 
+         out |= temp >> int((arrangement[i] - 16 - i));
+         else out |= temp << int((abs(arrangement[i] - 16 - i)));
    }
    return out;
 }
