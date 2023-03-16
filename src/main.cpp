@@ -17,7 +17,7 @@ byte left, right;     // read word from keyboard: pins are connected LEFT: BRBRB
 
 byte highTrig = 0;    // 0 if in setup mode, 1 if in High Trigger mode, 2 if in Normal Mode
 
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
+// MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 int midiCh = 6;
 
 /*
@@ -40,11 +40,15 @@ void setup() {
    Serial.begin(9600);
 
    // Setup output pins
-   GPIO7_GDIR |= (0x30007);
+   for (int i=0; i<5; i++) {
+      pinMode(ctrlPins[i], OUTPUT);
+   }
 
-   // Setup input pins (pulldown resistors - default)
-   GPIO6_GDIR &= ~(0xCCF0000);
-   
+   // Setup input pins (pulldown resistors)
+   for (int i=0; i<NUM_BANKS; i++) {
+      pinMode(inPins[i], INPUT_PULLDOWN);
+   }
+
    // Initialize banks array at 0
    memset(banks, 0x00, sizeof(banks));
    memset(prev_banks, 0x00, sizeof(prev_banks));
@@ -60,7 +64,7 @@ void setup() {
       setup_scan(); 
    }
    
-   MIDI.begin();
+   // MIDI.begin();
 }
 
 // MAIN LOOP
@@ -81,11 +85,14 @@ void setup_scan() {
       delayMicroseconds(10); // Debounce
       left = compact_dr((GPIO6_DR >> 16), inBits, 8);
       GPIO7_DR_CLEAR = (1 << 16);
-     
+      delayMicroseconds(10); // Debounce
+
       // Scan right keyboard
-      GPIO7_DR_SET = (1 << 17) | (bank & 0x7);
+      GPIO7_DR_SET = (1 << 17);
       delayMicroseconds(10); // Debounce
       right = compact_dr((GPIO6_DR >> 16), inBits, 8);
+      GPIO7_DR_CLEAR = (0x30007);
+      delayMicroseconds(10); // Debounce
 
       banks[bank].breaks = (left & 0xF) | (right & 0xF) << 4; // Use only break signals
    }
@@ -115,18 +122,15 @@ void setup_scan() {
         
          case 0x8:
             midiCh = bank+1;
-            /*
             Serial.print("New MIDI channel: ");
             Serial.println(midiCh);
-            */
          break;
 
          case 0x10:
             midiCh = bank+9;
-            /*
             Serial.print("New MIDI channel: ");
             Serial.println(midiCh);
-            */
+            
          break;
 
          case 0x1:
@@ -135,10 +139,8 @@ void setup_scan() {
          case 0x20:
          case 0x40:
          case 0x80:
-            /*
             Serial.print("Unassigned key. MIDI channel is: ");
             Serial.println(midiCh);
-            */
          break;
          
          default:
@@ -151,7 +153,6 @@ void setup_scan() {
 
 // Scan all the keys divided in banks
 void scan() {
-   
    // Scan and store
    for(int bank=0; bank<NUM_BANKS; bank++) {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
@@ -161,18 +162,19 @@ void scan() {
       delayMicroseconds(10); // Debounce
       left = compact_dr((GPIO6_DR >> 16), inBits, 8);
       GPIO7_DR_CLEAR = (1 << 16);
+      delayMicroseconds(10); // Debounce
      
       // Scan right keyboard
       GPIO7_DR_SET = (1 << 17) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
       right = compact_dr((GPIO6_DR >> 16), inBits, 8);
+      GPIO7_DR_CLEAR = (0x30007);
+      delayMicroseconds(10); // Debounce
 
       banks[bank].breaks = (left & 0x0F) | (right & 0x0F) << 4;
       banks[bank].makes = (left & 0xF0) >> 4 | (right & 0xF0);
-
-      GPIO7_DR_CLEAR = (0x30007);
-      delayMicroseconds(10); // Debounce
    }
+
    // Process
    for(int bank=0; bank<NUM_BANKS; bank++) {
       byte diff;
@@ -219,13 +221,11 @@ void trigger(key_fatar_t *key, event_t event) {
    switch (event) {
       case KEY_TOUCHED:
          if(highTrig==1) {
-          /*
-            MIDI.sendNoteOn(key->midi_note, 1, midiCh);
+            // MIDI.sendNoteOn(key->midi_note, 1, midiCh);
             Serial.print("MIDI ON: ");
             Serial.print(key->midi_note);
             Serial.print(" V: ");
             Serial.println(1);
-            */
             key->state = KEY_IS_DOWN;
             key->played = true;
             return;
@@ -236,13 +236,11 @@ void trigger(key_fatar_t *key, event_t event) {
 
       case KEY_PRESSED:
          if(key->played == false && highTrig==2) {
-            /*
             Serial.print("MIDI ON: ");
             Serial.print(key->midi_note);
             Serial.print(" V: ");
             Serial.println(velocity(key->t));
-            */
-            MIDI.sendNoteOn(key->midi_note, velocity(key->t), midiCh);
+            // MIDI.sendNoteOn(key->midi_note, velocity(key->t), midiCh);
             
             key->state = KEY_IS_DOWN;
             key->played = true;
@@ -257,13 +255,13 @@ void trigger(key_fatar_t *key, event_t event) {
 
       case KEY_TOP:
          if(key->played == true) {
-            /*
+            
             Serial.print("MIDI OFF: ");
             Serial.print(key->midi_note);
             Serial.print(" V: ");
             Serial.println(velocity(key->t));
-            */
-            MIDI.sendNoteOff(key->midi_note, velocity(key->t), midiCh);
+            
+            // MIDI.sendNoteOff(key->midi_note, velocity(key->t), midiCh);
 
             key->state = KEY_IS_UP;
             key->played = false;
