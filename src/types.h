@@ -22,6 +22,11 @@ typedef struct {
 } key_fatar_t;
 
 typedef struct {
+   byte pin;
+   byte bit;
+} teensy_port_reg;
+
+typedef struct {
    byte breaks;         // byte of shorts in break contacts (top) in current bank
    byte makes;          // byte of shorts in make contacts (bottom) in current bank
 } bank_t;
