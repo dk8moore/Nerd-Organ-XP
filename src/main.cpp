@@ -6,6 +6,8 @@
 #define NUM_KEYS         61                              // number of keys in the keyboard used
 #define NUM_KEYZONES      2
 #define NUM_BIT_MPLX      3
+#define LEFT              0
+#define RIGHT             1
 
 bank_t banks[NUM_BANKS];
 bank_t prev_banks[NUM_BANKS];
@@ -62,10 +64,10 @@ void setup() {
    Serial.begin(9600);
 
    // Setup output pins
-   for (int i=0; i<2; i++) {
+   for (int i=0; i<NUM_KEYZONES; i++) {
       pinMode(enMplx[i].pin, OUTPUT);
    }
-   for (int i=0; i<3; i++) {
+   for (int i=0; i<NUM_BIT_MPLX; i++) {
       pinMode(addrMplx[i].pin, OUTPUT);
    }
 
@@ -83,7 +85,7 @@ void setup() {
    memset(prev_banks, 0x00, sizeof(prev_banks));
    
    // Initialize keyboard keys struct
-   for (int key=0; key<61; key++) {
+   for (int key=0; key<NUM_KEYS; key++) {
       keys[key].midi_note = 36 + key;
       keys[key].t = 0;
       keys[key].played = false;
@@ -105,14 +107,14 @@ void scan() {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
 
       // Scan left keyboard
-      GPIO7_DR_SET = (1 << 11) | (bank & 0x7);
+      GPIO7_DR_SET = (1 << enMplx[LEFT].bit) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
       left = compact_dr((GPIO6_DR >> 16), inGridMatrix, 8);
-      GPIO7_DR_CLEAR = (1 << 11);
+      GPIO7_DR_CLEAR = (1 << enMplx[LEFT].bit);
       delayMicroseconds(10); // Debounce
      
       // Scan right keyboard
-      GPIO7_DR_SET = (1 << 10) | (bank & 0x7);
+      GPIO7_DR_SET = (1 << enMplx[RIGHT].bit) | (bank & 0x7);
       delayMicroseconds(10); // Debounce
       right = compact_dr((GPIO6_DR >> 16), inGridMatrix, 8);
       GPIO7_DR_CLEAR = (0xC07);
