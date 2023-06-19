@@ -8,6 +8,7 @@
 #define NUM_BIT_MPLX      3
 #define LEFT              0
 #define RIGHT             1
+#define HITRIG_VELOCITY   1
 
 bank_t banks[NUM_BANKS];
 bank_t prev_banks[NUM_BANKS];
@@ -40,9 +41,11 @@ byte midiOutPins[] = {1, 8};                             // TX1, TX2 pins respec
 
 byte left, right;                                        // read word from keyboard: pins are connected LEFT: BRBRBRBR MKMKMKMK, RIGHT: BRBRBRBR MKMKMKMK
 
-bool midiOut1 = false, midiOut2 = false, highTrig = false;   // current status of each switch
+bool highTrig = false;   // current status of high trigger switch
+byte midiOut = 0b00;     // current status of midi outputs (0b01 => midi1, 0b10 => midi2, 0b11 => both)
 
-// MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI1);
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI2);
 int midiCh = 6;
 
 /*
@@ -56,6 +59,7 @@ void setup_scan();
 void scan();
 byte compact_dr(word dr, teensy_port_reg arrangement[], int size);
 void trigger(key_fatar_t *key, event_t event);
+void output_midi(int note, int velocity, bool isOn);
 void increment();
 int velocity(int t);
 
@@ -91,7 +95,8 @@ void setup() {
       keys[key].played = false;
    }
    
-   // MIDI.begin();
+   MIDI1.begin();
+   MIDI2.begin();
 }
 
 // MAIN LOOP
@@ -123,6 +128,9 @@ void scan() {
       banks[bank].breaks = (left & 0x0F) | (right & 0x0F) << 4;
       banks[bank].makes = (left & 0xF0) >> 4 | (right & 0xF0);
    }
+      
+   midiOut = (GPIO9_DR >> 4) & 0x3;
+   highTrig = !(digitalReadFast(4));
 
    // Process
    for(int bank=0; bank<NUM_BANKS; bank++) {
@@ -151,11 +159,6 @@ void scan() {
          }
       }
    }
-
-   midiOut1 = !(digitalReadFast(2));
-   midiOut2 = !(digitalReadFast(3));
-   highTrig = !(digitalReadFast(4));
-   // if (midiOut1 == false && midiOut2 == false) Serial.println("Interruttori ON");
 }
 
 byte compact_dr(word dr, teensy_port_reg arrangement[], int size) {
@@ -174,11 +177,7 @@ void trigger(key_fatar_t *key, event_t event) {
    switch (event) {
       case KEY_TOUCHED:
          if(highTrig==true) {
-            // MIDI.sendNoteOn(key->midi_note, 1, midiCh);
-            Serial.print("MIDI ON: ");
-            Serial.print(key->midi_note);
-            Serial.print(" V: ");
-            Serial.println(1);
+            output_midi(key->midi_note, HITRIG_VELOCITY, true);
             key->state = KEY_IS_DOWN;
             key->played = true;
             return;
@@ -189,12 +188,7 @@ void trigger(key_fatar_t *key, event_t event) {
 
       case KEY_PRESSED:
          if(key->played == false && highTrig==false) {
-            Serial.print("MIDI ON: ");
-            Serial.print(key->midi_note);
-            Serial.print(" V: ");
-            Serial.println(velocity(key->t));
-            // MIDI.sendNoteOn(key->midi_note, velocity(key->t), midiCh);
-            
+            output_midi(key->midi_note, velocity(key->t), true);          
             key->state = KEY_IS_DOWN;
             key->played = true;
          }
@@ -208,14 +202,7 @@ void trigger(key_fatar_t *key, event_t event) {
 
       case KEY_TOP:
          if(key->played == true) {
-            
-            Serial.print("MIDI OFF: ");
-            Serial.print(key->midi_note);
-            Serial.print(" V: ");
-            Serial.println(velocity(key->t));
-            
-            // MIDI.sendNoteOff(key->midi_note, velocity(key->t), midiCh);
-
+            output_midi(key->midi_note, velocity(key->t), false);
             key->state = KEY_IS_UP;
             key->played = false;
          }
@@ -224,7 +211,41 @@ void trigger(key_fatar_t *key, event_t event) {
 
       default:
       break;
-  }
+   }
+   return;
+}
+
+void output_midi(int note, int velocity, bool isOn) {
+   String debugMidi = "MIDI " + String(midiOut);
+   if (isOn) debugMidi += " ON ";
+   else debugMidi += " OFF ";
+   debugMidi += String(note) + " V: " + String(velocity);
+   Serial.println(debugMidi);
+   switch (midiOut) {
+      case 0:
+      break;
+      case 1:
+         if (isOn) MIDI1.sendNoteOn(note, velocity, midiCh);
+         else MIDI1.sendNoteOff(note, velocity, midiCh);
+      break;
+      case 2:
+         if (isOn) MIDI2.sendNoteOn(note, velocity, midiCh);
+         else MIDI2.sendNoteOff(note, velocity, midiCh);
+      break;
+      case 3:
+         if (isOn) {
+            MIDI1.sendNoteOn(note, velocity, midiCh);
+            MIDI2.sendNoteOn(note, velocity, midiCh);
+         }
+         else {
+            MIDI1.sendNoteOff(note, velocity, midiCh);
+            MIDI2.sendNoteOff(note, velocity, midiCh);
+         }
+      break;
+      default:
+      break;
+   }
+   return;
 }
 
 // Increment the t values of each touched or released key
@@ -235,6 +256,7 @@ void increment() {
          keys[key].t++;
       }
    }
+   return;
 }
 
 // Compute the velocity from the time through a piecewise linear function
