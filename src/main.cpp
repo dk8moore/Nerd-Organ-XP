@@ -9,6 +9,7 @@
 #define LEFT              0
 #define RIGHT             1
 #define HITRIG_VELOCITY   1
+#define SWS_TIMER       200                              // switches scanning period in milliseconds
 
 bank_t banks[NUM_BANKS];
 bank_t prev_banks[NUM_BANKS];
@@ -41,8 +42,9 @@ byte midiOutPins[] = {1, 8};                             // TX1, TX2 pins respec
 
 byte left, right;                                        // read word from keyboard: pins are connected LEFT: BRBRBRBR MKMKMKMK, RIGHT: BRBRBRBR MKMKMKMK
 
-bool highTrig = false;   // current status of high trigger switch
-byte midiOut = 0b00;     // current status of midi outputs (0b01 => midi1, 0b10 => midi2, 0b11 => both)
+int lastSwsScan = 0;          // last moment in milliseconds when a scan of the switches has been performed
+bool highTrig = false;        // current status of high trigger switch
+byte midiOut = 0b11;          // current status of midi outputs (0b01 => midi1, 0b10 => midi2, 0b11 => both)
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI1);
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI2);
@@ -55,13 +57,13 @@ int midiCh = 6;
 volatile int cycles;
 */
 
-void setup_scan();
-void scan();
+void kbd_scan();
+void kbd_increment();
 byte compact_dr(word dr, teensy_port_reg arrangement[], int size);
 void trigger(key_fatar_t *key, event_t event);
 void output_midi(int note, int velocity, bool isOn);
-void increment();
 int velocity(int t);
+void sws_scan();
 
 void setup() {
    // Start serial comm for debug purposes
@@ -101,12 +103,15 @@ void setup() {
 
 // MAIN LOOP
 void loop() {
-   scan();
-   increment(); 
+   kbd_scan();
+   kbd_increment();
+   if (millis() - lastSwsScan > SWS_TIMER) {
+      sws_scan();
+   }
 }
 
 // Scan all the keys divided in banks
-void scan() {
+void kbd_scan() {
    // Scan and store
    for(int bank=0; bank<NUM_BANKS; bank++) {
       prev_banks[bank] = banks[bank]; // Store previous state so we can look for changes
@@ -128,9 +133,6 @@ void scan() {
       banks[bank].breaks = (left & 0x0F) | (right & 0x0F) << 4;
       banks[bank].makes = (left & 0xF0) >> 4 | (right & 0xF0);
    }
-      
-   midiOut = (GPIO9_DR >> 4) & 0x3;
-   highTrig = !(digitalReadFast(4));
 
    // Process
    for(int bank=0; bank<NUM_BANKS; bank++) {
@@ -249,7 +251,7 @@ void output_midi(int note, int velocity, bool isOn) {
 }
 
 // Increment the t values of each touched or released key
-void increment() {
+void kbd_increment() {
    for(int key=0; key<NUM_KEYS; key++) {
       state_t state = keys[key].state;
       if(state == KEY_IS_GOING_UP || state == KEY_IS_GOING_DOWN) {
@@ -278,4 +280,10 @@ int velocity(int t) {
       return int(-0.1267*t + 42.8);
    if(t>329)
       return 1;
+}
+
+void sws_scan() {
+   midiOut = (GPIO9_DR >> 4) & 0x3;
+   highTrig = !(digitalReadFast(4));
+   lastSwsScan = millis();
 }
