@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <types.h>
 #include <MIDI.h>
+// #include <MIDIUSB.h>
 
 #define NUM_BANKS         8                              // number of group of keys (for Fatar 61 they're arranged in 8 banks)
 #define NUM_KEYS         61                              // number of keys in the keyboard used
@@ -48,7 +49,7 @@ byte midiOut = 0b11;          // current status of midi outputs (0b01 => midi1, 
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI1);
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI2);
-int midiCh = 6;
+const int midiCh = 6;
 
 /*
 #define CPU_RESET_CYCLECOUNTER    do { ARM_DEMCR |= ARM_DEMCR_TRCENA;          \
@@ -237,6 +238,7 @@ void output_midi(int note, int velocity, bool isOn) {
       case 3:
          if (isOn) {
             MIDI1.sendNoteOn(note, velocity, midiCh);
+            // usbMIDI.
             MIDI2.sendNoteOn(note, velocity, midiCh);
          }
          else {
