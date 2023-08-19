@@ -60,7 +60,7 @@ const int midiCh = 6;
 volatile int cycles;
 */
 
-void process_midi_in(int midiPort);
+void process_midi_in(int midiPortIndex);
 void kbd_scan();
 void kbd_increment();
 byte compact_dr(word dr, teensy_port_reg arrangement[], int size);
@@ -104,18 +104,15 @@ void setup() {
    midiPort[0] = &MIDI1;
    midiPort[1] = &MIDI2;
    for (int i = 0; i < NUM_MIDI_PORTS; i++) {
-      midiPort[i]->begin();
+      midiPort[i]->begin(midiCh);
    }
 }
 
 // MAIN LOOP
 void loop() {
-   // if (midiPort[0]->read()) {
-   //    process_midi_in(1);
-   // }
-   // if (midiPort[1]->read()) {
-   //    process_midi_in(2);
-   // }
+   for (int i = 0; i < NUM_MIDI_PORTS; i++) {
+      if (midiPort[i]->read()) process_midi_in(i);
+   }
    kbd_scan();
    kbd_increment();
    if (millis() - lastSwsScan > SWS_TIMER) {
@@ -123,34 +120,33 @@ void loop() {
    }
 }
 
-// void process_midi_in(int midiPort) {
-//    int type, note, velocity, channel, d1, d2;
+void process_midi_in(int midiPortIndex) {
+   int note, velocity, channel, d1, d2;
 
-//    byte type = MIDI.getType();
-//    switch (type) {
-//    case midi::NoteOn:
-//       note = MIDI.getData1();
-//       velocity = MIDI.getData2();
-//       channel = MIDI.getChannel();
-//       if (velocity > 0) {
-//          Serial.println(String("Note On:  ch=") + channel + ", note=" + note + ", velocity=" + velocity);
-//       } else {
-//          Serial.println(String("Note Off: ch=") + channel + ", note=" + note);
-//       }
-//       break;
-//    case midi::NoteOff:
-//       note = MIDI.getData1();
-//       velocity = MIDI.getData2();
-//       channel = MIDI.getChannel();
-//       Serial.println(String("Note Off: ch=") + channel + ", note=" + note + ", velocity=" + velocity);
-//       break;
-//    default:
-//       d1 = MIDI.getData1();
-//       d2 = MIDI.getData2();
-//       Serial.println(String("Message, type=") + type + ", data = " + d1 + " " + d2);
-//    }
-//    t = millis();
-// }
+   byte type = midiPort[midiPortIndex]->getType();
+   switch (type) {
+   case midi::NoteOn:
+      note = midiPort[midiPortIndex]->getData1();
+      velocity = midiPort[midiPortIndex]->getData2();
+      channel = midiPort[midiPortIndex]->getChannel();
+      if (velocity > 0) {
+         Serial.println(String("Note On:  ch=") + channel + ", note=" + note + ", velocity=" + velocity);
+      } else {
+         Serial.println(String("Note Off: ch=") + channel + ", note=" + note);
+      }
+      break;
+   case midi::NoteOff:
+      note = midiPort[midiPortIndex]->getData1();
+      velocity = midiPort[midiPortIndex]->getData2();
+      channel = midiPort[midiPortIndex]->getChannel();
+      Serial.println(String("Note Off: ch=") + channel + ", note=" + note + ", velocity=" + velocity);
+      break;
+   default:
+      d1 = midiPort[midiPortIndex]->getData1();
+      d2 = midiPort[midiPortIndex]->getData2();
+      Serial.println(String("Message, type=") + type + ", data = " + d1 + " " + d2);
+   }
+}
 
 // Scan all the keys divided in banks
 void kbd_scan() {
