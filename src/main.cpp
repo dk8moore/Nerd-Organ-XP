@@ -266,7 +266,6 @@ void output_midi(int note, int velocity, bool isOn) {
    debugMidi += String(note) + " V: " + String(velocity);
    Serial.println(debugMidi);
    if (midiOut - 1 < NUM_MIDI_PORTS) {
-      Serial.println(midiOut);
       if (isOn) midiPort[midiOut - 1]->sendNoteOn(note, velocity, midiCh);
       else midiPort[midiOut - 1]->sendNoteOff(note, velocity, midiCh);
    } else {
