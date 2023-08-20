@@ -11,6 +11,7 @@
 #define RIGHT             1
 #define HITRIG_VELOCITY   1
 #define SWS_TIMER       200                              // switches scanning period in milliseconds
+#define NUM_MIDI_PORTS    2                              // number of MIDI in/out ports (couples)
 
 bank_t banks[NUM_BANKS];
 bank_t prev_banks[NUM_BANKS];
@@ -45,10 +46,12 @@ byte left, right;                                        // read word from keybo
 
 int lastSwsScan = 0;          // last moment in milliseconds when a scan of the switches has been performed
 bool highTrig = false;        // current status of high trigger switch
-byte midiOut = 0b11;          // current status of midi outputs (0b01 => midi1, 0b10 => midi2, 0b11 => both)
+byte midiOut = 0b11;          // current status of midi outputs (0b01 => Midi1, 0b10 => Midi2, 0b11 => both)
 
+MIDI_NAMESPACE::MidiInterface<MIDI_NAMESPACE::SerialMIDI<HardwareSerial>>* midiPort[NUM_MIDI_PORTS];
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI1);
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI2);
+
 const int midiCh = 6;
 
 /*
@@ -58,6 +61,7 @@ const int midiCh = 6;
 volatile int cycles;
 */
 
+void process_midi_in(int midiPortIndex);
 void kbd_scan();
 void kbd_increment();
 byte compact_dr(word dr, teensy_port_reg arrangement[], int size);
@@ -98,16 +102,50 @@ void setup() {
       keys[key].played = false;
    }
    
-   MIDI1.begin();
-   MIDI2.begin();
+   midiPort[0] = &MIDI1;
+   midiPort[1] = &MIDI2;
+   for (int i = 0; i < NUM_MIDI_PORTS; i++) {
+      midiPort[i]->begin(midiCh);
+   }
 }
 
 // MAIN LOOP
 void loop() {
+   for (int i = 0; i < NUM_MIDI_PORTS; i++) {
+      if (midiPort[i]->read()) process_midi_in(i);
+   }
    kbd_scan();
    kbd_increment();
    if (millis() - lastSwsScan > SWS_TIMER) {
       sws_scan();
+   }
+}
+
+void process_midi_in(int midiPortIndex) {
+   int note, velocity, channel, d1, d2;
+
+   byte type = midiPort[midiPortIndex]->getType();
+   switch (type) {
+   case midi::NoteOn:
+      note = midiPort[midiPortIndex]->getData1();
+      velocity = midiPort[midiPortIndex]->getData2();
+      channel = midiPort[midiPortIndex]->getChannel();
+      if (velocity > 0) {
+         Serial.println(String("Note On:  ch=") + channel + ", note=" + note + ", velocity=" + velocity);
+      } else {
+         Serial.println(String("Note Off: ch=") + channel + ", note=" + note);
+      }
+      break;
+   case midi::NoteOff:
+      note = midiPort[midiPortIndex]->getData1();
+      velocity = midiPort[midiPortIndex]->getData2();
+      channel = midiPort[midiPortIndex]->getChannel();
+      Serial.println(String("Note Off: ch=") + channel + ", note=" + note + ", velocity=" + velocity);
+      break;
+   default:
+      d1 = midiPort[midiPortIndex]->getData1();
+      d2 = midiPort[midiPortIndex]->getData2();
+      Serial.println(String("Message, type=") + type + ", data = " + d1 + " " + d2);
    }
 }
 
@@ -224,30 +262,14 @@ void output_midi(int note, int velocity, bool isOn) {
    else debugMidi += " OFF ";
    debugMidi += String(note) + " V: " + String(velocity);
    Serial.println(debugMidi);
-   switch (midiOut) {
-      case 0:
-      break;
-      case 1:
-         if (isOn) MIDI1.sendNoteOn(note, velocity, midiCh);
-         else MIDI1.sendNoteOff(note, velocity, midiCh);
-      break;
-      case 2:
-         if (isOn) MIDI2.sendNoteOn(note, velocity, midiCh);
-         else MIDI2.sendNoteOff(note, velocity, midiCh);
-      break;
-      case 3:
-         if (isOn) {
-            MIDI1.sendNoteOn(note, velocity, midiCh);
-            // usbMIDI.
-            MIDI2.sendNoteOn(note, velocity, midiCh);
-         }
-         else {
-            MIDI1.sendNoteOff(note, velocity, midiCh);
-            MIDI2.sendNoteOff(note, velocity, midiCh);
-         }
-      break;
-      default:
-      break;
+   if (midiOut - 1 < NUM_MIDI_PORTS) {
+      if (isOn) midiPort[midiOut - 1]->sendNoteOn(note, velocity, midiCh);
+      else midiPort[midiOut - 1]->sendNoteOff(note, velocity, midiCh);
+   } else {
+      for (int i = 0; i < NUM_MIDI_PORTS; i++) {
+         if (isOn) midiPort[i]->sendNoteOn(note, velocity, midiCh);
+         else midiPort[i]->sendNoteOff(note, velocity, midiCh);
+      }
    }
    return;
 }
